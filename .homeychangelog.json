@@ -4,5 +4,8 @@
   },
   "1.0.2": {
     "en": "PAS gateway support, app rename"
+  },
+  "1.0.3": {
+    "en": "Changed description"
   }
 }
