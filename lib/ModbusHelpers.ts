@@ -17,8 +17,8 @@ const REG_ENERGY_TOTAL = 3203;
 /** Device type ID register, used during discovery */
 export const REG_DEVICE_TYPE = 31024;
 
-/** User-configured device name (ASCII, max 20 chars, 10 registers) */
-const REG_DEVICE_NAME = 31001;
+/** User-configured device name (ASCII, max 20 chars, 10 registers, hex 0x7918) */
+const REG_DEVICE_NAME = 31000;
 
 /**
  * Read all measurement registers for a PowerTag device.

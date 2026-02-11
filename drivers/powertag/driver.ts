@@ -156,12 +156,12 @@ class PowerTagDriver extends Homey.Driver {
           continue;
         }
 
-        // Try to read the user-configured name
+        // Try to read the user-configured name (may not be supported on all gateways)
         let deviceName = '';
         try {
           deviceName = await readDeviceName(client);
         } catch {
-          // Name register may not be available on all gateways
+          // Name register not supported — use model name fallback
         }
 
         devices.push({
