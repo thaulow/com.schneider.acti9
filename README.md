@@ -13,8 +13,9 @@ Monitor your Schneider EcoStruxure energy devices in Homey via Modbus TCP.
 - PowerTag M63 series (1P, 1P+N, 3P, 3P+N)
 - PowerTag F63 series (1P+N, 3P+N)
 - PowerTag P63 series (1P+N, 3P+N)
+- PowerTag NSX series (250A, 630A)
 
-These are Schneider EcoStruxure Acti9 PowerTag energy sensors that clip onto your circuit breakers.
+These are Schneider EcoStruxure Acti9 PowerTag energy sensors that clip onto your circuit breakers and NSX compact circuit breakers.
 
 ## Capabilities
 

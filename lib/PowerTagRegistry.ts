@@ -27,6 +27,12 @@ export const POWERTAG_MODELS: ReadonlyMap<number, PowerTagModelConfig> = new Map
   [85, { typeId: 85, model: 'A9MEM1570', name: 'PowerTag F63 3P+N',          phases: '3P+N', voltageMode: 'L-L', phaseCount: 3 }],
   [86, { typeId: 86, model: 'A9MEM1571', name: 'PowerTag P63 3P+N Top',      phases: '3P+N', voltageMode: 'L-N', phaseCount: 3 }],
   [87, { typeId: 87, model: 'A9MEM1572', name: 'PowerTag P63 3P+N Bottom',   phases: '3P+N', voltageMode: 'L-N', phaseCount: 3 }],
+
+  // NSX series
+  [92, { typeId: 92, model: 'LV434020', name: 'PowerTag NSX 250A Top',      phases: '3P+N', voltageMode: 'L-N', phaseCount: 3 }],
+  [93, { typeId: 93, model: 'LV434021', name: 'PowerTag NSX 250A Bottom',   phases: '3P+N', voltageMode: 'L-N', phaseCount: 3 }],
+  [94, { typeId: 94, model: 'LV434022', name: 'PowerTag NSX 630A Top',      phases: '3P+N', voltageMode: 'L-N', phaseCount: 3 }],
+  [95, { typeId: 95, model: 'LV434023', name: 'PowerTag NSX 630A Bottom',   phases: '3P+N', voltageMode: 'L-N', phaseCount: 3 }],
 ]);
 
 /**
