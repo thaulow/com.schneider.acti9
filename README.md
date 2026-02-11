@@ -1,6 +1,6 @@
 # Schneider EcoStruxure
 
-Monitor your Schneider Electric energy devices in Homey via Modbus TCP.
+Monitor your Schneider EcoStruxure energy devices in Homey via Modbus TCP.
 
 ## Supported Gateways
 
@@ -14,7 +14,7 @@ Monitor your Schneider Electric energy devices in Homey via Modbus TCP.
 - PowerTag F63 series (1P+N, 3P+N)
 - PowerTag P63 series (1P+N, 3P+N)
 
-These are Schneider Electric Acti9 PowerTag energy sensors that clip onto your circuit breakers.
+These are Schneider EcoStruxure Acti9 PowerTag energy sensors that clip onto your circuit breakers.
 
 ## Capabilities
 
