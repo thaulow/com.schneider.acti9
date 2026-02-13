@@ -33,7 +33,8 @@ interface ConnectionEntry {
 
 const CONNECT_TIMEOUT = 10_000;
 const RECONNECT_DELAY = 30_000;
-const OPERATION_TIMEOUT = 5_000;
+/** Per-request timeout passed to jsmodbus (must use built-in timeout, not Promise.race) */
+const REQUEST_TIMEOUT = 5_000;
 
 /**
  * Manages a pool of Modbus TCP connections, one per gateway IP:port.
@@ -63,8 +64,11 @@ export class ModbusConnectionManager {
    */
   private createSocketAndClient(host: string, port: number): { socket: net.Socket; client: InstanceType<typeof Modbus.client.TCP> } {
     const socket = new net.Socket();
-    // Create client before connecting — jsmodbus needs to see the 'connect' event
-    const client = new Modbus.client.TCP(socket, 1);
+    // Create client before connecting — jsmodbus needs to see the 'connect' event.
+    // Third arg is jsmodbus's built-in per-request timeout. Using Promise.race
+    // externally doesn't work because it can't cancel jsmodbus's internal
+    // _currentRequest, which blocks the entire sequential queue.
+    const client = new Modbus.client.TCP(socket, 1, REQUEST_TIMEOUT);
     return { socket, client };
   }
 
@@ -233,12 +237,7 @@ export class ModbusConnectionManager {
         (entry.client as any)._unitId = op.unitId;
         (entry.client as any)._requestHandler._unitId = op.unitId;
 
-        const result = await Promise.race([
-          op.execute(entry.client),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('Operation timeout')), OPERATION_TIMEOUT),
-          ),
-        ]);
+        const result = await op.execute(entry.client);
         op.resolve(result);
       } catch (err) {
         op.reject(err);
