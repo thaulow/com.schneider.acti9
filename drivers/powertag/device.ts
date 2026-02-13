@@ -34,7 +34,7 @@ class PowerTagDevice extends Homey.Device {
   async onInit(): Promise<void> {
     this.settings = this.getSettings() as PowerTagSettings;
     this.store = {
-      slaveId: this.getStoreValue('slaveId'),
+      unitId: this.getStoreValue('unitId'),
       typeId: this.getStoreValue('typeId'),
       model: this.getStoreValue('model'),
     };
@@ -52,7 +52,7 @@ class PowerTagDevice extends Homey.Device {
         await this.getConnectionManager().execute(
           this.settings.address,
           this.settings.port,
-          this.store.slaveId,
+          this.store.unitId,
           (client) => writeControlIOOutput(client, value),
         );
       });
@@ -71,7 +71,7 @@ class PowerTagDevice extends Homey.Device {
     }
 
     this.startPolling();
-    this.log(`${this.modelConfig.model} initialized (slave ${this.store.slaveId})`);
+    this.log(`${this.modelConfig.model} initialized (unit ${this.store.unitId})`);
   }
 
   async onUninit(): Promise<void> {
@@ -138,7 +138,7 @@ class PowerTagDevice extends Homey.Device {
       switch (this.modelConfig.deviceCategory) {
         case 'heattag': {
           const result = await this.getConnectionManager().execute(
-            this.settings.address, this.settings.port, this.store.slaveId,
+            this.settings.address, this.settings.port, this.store.unitId,
             (client) => readHeatTagRegisters(client),
           );
           await this.updateHeatTagCapabilities(result);
@@ -146,7 +146,7 @@ class PowerTagDevice extends Homey.Device {
         }
         case 'control_2di': {
           const result = await this.getConnectionManager().execute(
-            this.settings.address, this.settings.port, this.store.slaveId,
+            this.settings.address, this.settings.port, this.store.unitId,
             (client) => readControl2DIRegisters(client),
           );
           await this.updateControl2DICapabilities(result);
@@ -154,7 +154,7 @@ class PowerTagDevice extends Homey.Device {
         }
         case 'control_io': {
           const result = await this.getConnectionManager().execute(
-            this.settings.address, this.settings.port, this.store.slaveId,
+            this.settings.address, this.settings.port, this.store.unitId,
             (client) => readControlIORegisters(client),
           );
           await this.updateControlIOCapabilities(result);
@@ -163,7 +163,7 @@ class PowerTagDevice extends Homey.Device {
         case 'energy':
         default: {
           const result = await this.getConnectionManager().execute(
-            this.settings.address, this.settings.port, this.store.slaveId,
+            this.settings.address, this.settings.port, this.store.unitId,
             (client) => readAllRegisters(client, this.modelConfig.voltageMode),
           );
           await this.updateEnergyCapabilities(result);
@@ -175,7 +175,7 @@ class PowerTagDevice extends Homey.Device {
         await this.setAvailable();
       }
     } catch (err) {
-      this.error(`Poll error for slave ${this.store.slaveId}:`, err);
+      this.error(`Poll error for unit ${this.store.unitId}:`, err);
       await this.setUnavailable('Communication error').catch(() => {});
     }
   }

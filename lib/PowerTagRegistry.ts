@@ -57,6 +57,19 @@ export const POWERTAG_MODELS: ReadonlyMap<number, PowerTagModelConfig> = new Map
 ]);
 
 /**
+ * Look up a model config by its commercial reference string (e.g. "A9MEM1560").
+ * Used by PAS600 Panel Server discovery where the device type register (31024)
+ * is not available and we identify devices by their reference string instead.
+ */
+export function getModelByReference(ref: string): PowerTagModelConfig | undefined {
+  const trimmed = ref.trim();
+  for (const config of POWERTAG_MODELS.values()) {
+    if (config.model === trimmed) return config;
+  }
+  return undefined;
+}
+
+/**
  * Build the Homey capability list for a given model.
  */
 export function getCapabilitiesForModel(config: PowerTagModelConfig): string[] {

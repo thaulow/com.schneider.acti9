@@ -14,11 +14,17 @@ const REG_FREQUENCY    = 3109;
 const REG_TEMPERATURE  = 3131;
 const REG_ENERGY_TOTAL = 3203;
 
-/** Device type ID register, used during discovery */
+/** Device type ID register, used during discovery (Smartlink only, hex 0x7930) */
 export const REG_DEVICE_TYPE = 31024;
 
 /** User-configured device name (ASCII, max 20 chars, 10 registers, hex 0x7918) */
 const REG_DEVICE_NAME = 31000;
+
+/** PAS600 Panel Server: device address table base at unit 255 (hex 0x01F8) */
+const REG_PAS_DEVICE_ADDRESS = 0x01F8; // 504
+
+/** PAS600 Panel Server: commercial reference string per device (hex 0x7954, 16 regs) */
+const REG_COMMERCIAL_REF = 0x7954; // 31060
 
 /**
  * Read all measurement registers for a PowerTag device.
@@ -155,7 +161,7 @@ export async function writeControlIOOutput(
 }
 
 /**
- * Read the device type code at a given slave ID.
+ * Read the device type code at a given unit ID.
  * Returns 0 or 65535 if no device is present.
  */
 export async function readDeviceType(
@@ -166,20 +172,74 @@ export async function readDeviceType(
 }
 
 /**
- * Read the user-configured device name (register 31001, 10 regs = 20 ASCII chars).
+ * Read the user-configured device name (register 31000, 10 regs = 20 ASCII chars).
  * Returns empty string if no name is set.
  */
 export async function readDeviceName(
   client: InstanceType<typeof Modbus.client.TCP>,
 ): Promise<string> {
   const resp = await client.readHoldingRegisters(REG_DEVICE_NAME, 10);
-  const buf = resp.response.body.valuesAsBuffer;
-  // Each register holds 2 ASCII bytes (big-endian)
-  let name = '';
+  return parseAsciiBuffer(resp.response.body.valuesAsBuffer);
+}
+
+/**
+ * Read the device address table from a PAS600 Panel Server gateway (unit 255).
+ *
+ * The gateway stores up to 99 device slots. Each slot occupies 5 registers
+ * starting at 0x01F8. The first register of each slot holds the Modbus unit ID
+ * of the device in that slot (0 or 65535 = empty).
+ *
+ * Returns a Map of slot number (1-99) → unit ID for occupied slots.
+ */
+export async function readPanelServerDeviceAddresses(
+  client: InstanceType<typeof Modbus.client.TCP>,
+): Promise<Map<number, number>> {
+  // 99 slots × 5 registers = 495 registers total, starting at 0x01F8
+  // Read in 4 chunks of 125 registers (Modbus max per read)
+  const baseReg = REG_PAS_DEVICE_ADDRESS;
+  const chunks = await Promise.all([
+    client.readHoldingRegisters(baseReg, 125),
+    client.readHoldingRegisters(baseReg + 125, 125),
+    client.readHoldingRegisters(baseReg + 250, 125),
+    client.readHoldingRegisters(baseReg + 375, 120), // last chunk: 495 - 375 = 120
+  ]);
+
+  const addresses = new Map<number, number>();
+
+  for (let slot = 1; slot <= 99; slot++) {
+    // Each slot is 5 registers; first register = unit ID
+    const regOffset = (slot - 1) * 5;
+    const chunkIndex = Math.floor(regOffset / 125);
+    const indexInChunk = (regOffset % 125) * 2; // 2 bytes per register
+    const buf = chunks[chunkIndex].response.body.valuesAsBuffer;
+    const unitId = buf.readUInt16BE(indexInChunk);
+
+    if (unitId !== 0 && unitId !== 65535) {
+      addresses.set(slot, unitId);
+    }
+  }
+
+  return addresses;
+}
+
+/**
+ * Read the commercial reference string from a device (PAS600 Panel Server).
+ * Register 0x7954, 16 registers = 32 ASCII chars. Returns e.g. "A9MEM1560".
+ */
+export async function readCommercialReference(
+  client: InstanceType<typeof Modbus.client.TCP>,
+): Promise<string> {
+  const resp = await client.readHoldingRegisters(REG_COMMERCIAL_REF, 16);
+  return parseAsciiBuffer(resp.response.body.valuesAsBuffer);
+}
+
+/** Parse a Modbus register buffer as a null-terminated ASCII string. */
+function parseAsciiBuffer(buf: Buffer): string {
+  let str = '';
   for (let i = 0; i < buf.length; i++) {
     const byte = buf[i];
     if (byte === 0) break;
-    name += String.fromCharCode(byte);
+    str += String.fromCharCode(byte);
   }
-  return name.trim();
+  return str.trim();
 }

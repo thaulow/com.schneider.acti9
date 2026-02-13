@@ -69,12 +69,12 @@ export interface PowerTagSettings {
 
 /** Store values persisted per device */
 export interface PowerTagStore {
-  slaveId: number;
+  unitId: number;
   typeId: number;
   model: string;
 }
 
 /** Device data (unique identifier for Homey) */
 export interface PowerTagDeviceData {
-  id: string; // "{ip}:{port}:{slaveId}"
+  id: string; // "{ip}:{port}:{unitId}"
 }

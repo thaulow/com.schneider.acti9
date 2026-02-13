@@ -13,7 +13,7 @@ interface HomeyInstance {
 }
 
 interface QueuedOperation {
-  slaveId: number;
+  unitId: number;
   execute: (client: InstanceType<typeof Modbus.client.TCP>) => Promise<any>;
   resolve: (value: any) => void;
   reject: (reason: any) => void;
@@ -42,7 +42,7 @@ const OPERATION_TIMEOUT = 5_000;
  *
  * Important: the jsmodbus TCP client must be created BEFORE socket.connect()
  * so it can observe the 'connect' event. We create one client per connection
- * and swap the _unitId before each operation.
+ * and swap the unit ID before each operation.
  */
 export class ModbusConnectionManager {
 
@@ -118,13 +118,13 @@ export class ModbusConnectionManager {
   }
 
   /**
-   * Execute a Modbus operation on a specific slave ID.
+   * Execute a Modbus operation on a specific unit ID.
    * Returns a promise that resolves with the operation result.
    */
   async execute<T>(
     host: string,
     port: number,
-    slaveId: number,
+    unitId: number,
     operation: (client: InstanceType<typeof Modbus.client.TCP>) => Promise<T>,
   ): Promise<T> {
     const key = this.getKey(host, port);
@@ -147,7 +147,7 @@ export class ModbusConnectionManager {
 
     return new Promise<T>((resolve, reject) => {
       entry.queue.push({
-        slaveId,
+        unitId,
         execute: operation as any,
         resolve,
         reject,
@@ -230,8 +230,8 @@ export class ModbusConnectionManager {
 
       try {
         // Swap the unit ID on the shared client for this operation
-        (entry.client as any)._unitId = op.slaveId;
-        (entry.client as any)._requestHandler._unitId = op.slaveId;
+        (entry.client as any)._unitId = op.unitId;
+        (entry.client as any)._requestHandler._unitId = op.unitId;
 
         const result = await Promise.race([
           op.execute(entry.client),

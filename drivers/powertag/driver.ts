@@ -5,17 +5,17 @@ import * as net from 'net';
 import * as Modbus from 'jsmodbus';
 import {
   POWERTAG_MODELS,
+  getModelByReference,
   getCapabilitiesForModel,
   getCapabilityOptionsForModel,
 } from '../../lib/PowerTagRegistry';
-import { readDeviceType, readDeviceName } from '../../lib/ModbusHelpers';
-import type { PowerTagSettings, PowerTagStore, PowerTagDeviceData } from '../../lib/types';
-
-/**
- * Base slave ID for wireless devices on a Smartlink SI D / PowerTag Link.
- * Device slot 0 → slave 150, slot 1 → slave 151, etc.
- */
-const SMARTLINK_SLAVE_BASE = 150;
+import {
+  readDeviceType,
+  readDeviceName,
+  readPanelServerDeviceAddresses,
+  readCommercialReference,
+} from '../../lib/ModbusHelpers';
+import type { PowerTagSettings, PowerTagStore, PowerTagDeviceData, PowerTagModelConfig } from '../../lib/types';
 
 class PowerTagDriver extends Homey.Driver {
 
@@ -81,9 +81,9 @@ class PowerTagDriver extends Homey.Driver {
   /**
    * Discover PowerTag devices on the gateway.
    *
-   * Scans the Smartlink range (150-169) first since that's where most
-   * gateways place devices, then extends to 100-149 if nothing is found
-   * (for Panel Servers that use the full 100-199 range).
+   * Tries PAS600 Panel Server discovery first (reads device address table
+   * from gateway unit 255). If that fails, falls back to Smartlink-style
+   * scanning of unit ID ranges.
    */
   private async discoverDevices(settings: PowerTagSettings): Promise<any[]> {
     const socket = new net.Socket();
@@ -92,7 +92,7 @@ class PowerTagDriver extends Homey.Driver {
     // socket 'connect' event to transition its internal state to 'online'.
     // 500ms timeout: real devices respond in ~5-50ms, the gateway returns
     // Modbus exceptions in <10ms for non-existent registers.
-    const client = new Modbus.client.TCP(socket, SMARTLINK_SLAVE_BASE, 500);
+    const client = new Modbus.client.TCP(socket, 1, 500);
 
     try {
       await new Promise<void>((resolve, reject) => {
@@ -112,11 +112,24 @@ class PowerTagDriver extends Homey.Driver {
         });
       });
 
-      // Scan Smartlink range first (150-169), then Panel Server range (100-149)
-      let devices = await this.scanSlaveRange(client, settings, 150, 170);
+      // Try Panel Server (PAS600) discovery first — reads device addresses
+      // from gateway unit 255. Fast when supported (~1-2s), single timeout
+      // (~500ms) when not.
+      let devices: any[] = [];
+      try {
+        devices = await this.discoverViaPanelServer(client, settings);
+        this.log(`Panel Server discovery found ${devices.length} devices`);
+      } catch (err) {
+        this.log('Panel Server discovery not available, falling back to Smartlink scan');
+      }
+
+      // Fall back to Smartlink-style range scanning if PAS600 didn't find anything
       if (devices.length === 0) {
-        this.log('No devices at 150-169, scanning 100-149...');
-        devices = await this.scanSlaveRange(client, settings, 100, 150);
+        const smartlink = await this.scanUnitRange(client, settings, 150, 170);
+        const lower = await this.scanUnitRange(client, settings, 100, 150, 3);
+        const upper = await this.scanUnitRange(client, settings, 170, 200, 3);
+        devices = [...smartlink, ...lower, ...upper];
+        this.log(`Smartlink scan found ${devices.length} devices`);
       }
 
       this.log(`Discovery complete: found ${devices.length} devices`);
@@ -127,32 +140,88 @@ class PowerTagDriver extends Homey.Driver {
   }
 
   /**
-   * Scan a range of slave IDs for devices by reading register 31024 (device type).
-   * Stops early after 10 consecutive timeouts once at least one device is found.
+   * Discover devices via PAS600 Panel Server.
+   *
+   * Reads the device address table from gateway unit 255, then queries
+   * each device for its commercial reference string to identify the model.
    */
-  private async scanSlaveRange(
+  private async discoverViaPanelServer(
+    client: InstanceType<typeof Modbus.client.TCP>,
+    settings: PowerTagSettings,
+  ): Promise<any[]> {
+    // Read device address table from gateway (unit 255)
+    this.setUnitId(client, 255);
+    const addressMap = await readPanelServerDeviceAddresses(client);
+    this.log(`Panel Server address table: ${addressMap.size} devices found`);
+
+    const devices: any[] = [];
+
+    for (const [slot, unitId] of addressMap) {
+      try {
+        this.setUnitId(client, unitId);
+
+        // Read commercial reference to identify the model
+        const reference = await readCommercialReference(client);
+        if (!reference) {
+          this.log(`Slot ${slot} (unit ${unitId}): empty reference, skipping`);
+          continue;
+        }
+
+        const modelConfig = getModelByReference(reference);
+        if (!modelConfig) {
+          this.log(`Slot ${slot} (unit ${unitId}): unknown reference "${reference}", skipping`);
+          continue;
+        }
+
+        // Try to read the user-configured name
+        let deviceName = '';
+        try {
+          deviceName = await readDeviceName(client);
+        } catch {
+          // Name register not supported — use model name fallback
+        }
+
+        devices.push(this.buildDeviceEntry(
+          settings, unitId, modelConfig.typeId, modelConfig, deviceName,
+        ));
+
+        this.log(`Found ${modelConfig.model} "${reference}" at unit ${unitId} (slot ${slot})`);
+      } catch (err) {
+        this.log(`Slot ${slot} (unit ${unitId}): read failed, skipping`);
+      }
+    }
+
+    return devices;
+  }
+
+  /**
+   * Scan a range of unit IDs for devices by reading register 31024 (device type).
+   * Stops early after consecutive timeouts to keep Smartlink scans fast.
+   */
+  private async scanUnitRange(
     client: InstanceType<typeof Modbus.client.TCP>,
     settings: PowerTagSettings,
     startId: number,
     endId: number,
+    maxConsecutiveTimeouts = 10,
   ): Promise<any[]> {
     const devices: any[] = [];
 
-    this.log(`Scanning slave IDs ${startId}-${endId - 1}...`);
+    this.log(`Scanning unit IDs ${startId}-${endId - 1}...`);
     let consecutiveTimeouts = 0;
-    for (let slaveId = startId; slaveId < endId; slaveId++) {
+    for (let unitId = startId; unitId < endId; unitId++) {
       try {
-        this.setUnitId(client, slaveId);
+        this.setUnitId(client, unitId);
         const typeId = await readDeviceType(client);
         consecutiveTimeouts = 0;
 
         if (typeId === 0 || typeId === 65535) continue;
 
-        this.log(`Slave ${slaveId}: typeId=${typeId}`);
+        this.log(`Unit ${unitId}: typeId=${typeId}`);
 
         const modelConfig = POWERTAG_MODELS.get(typeId);
         if (!modelConfig) {
-          this.log(`Unknown device type ${typeId} at slave ${slaveId}, skipping`);
+          this.log(`Unknown device type ${typeId} at unit ${unitId}, skipping`);
           continue;
         }
 
@@ -164,30 +233,41 @@ class PowerTagDriver extends Homey.Driver {
           // Name register not supported — use model name fallback
         }
 
-        devices.push({
-          name: deviceName || `${modelConfig.name} (${slaveId})`,
-          data: { id: `${settings.address}:${settings.port}:${slaveId}` } as PowerTagDeviceData,
-          settings: {
-            address: settings.address,
-            port: settings.port,
-            polling: settings.polling,
-          },
-          store: { slaveId, typeId, model: modelConfig.model } as PowerTagStore,
-          capabilities: getCapabilitiesForModel(modelConfig),
-          capabilitiesOptions: getCapabilityOptionsForModel(modelConfig),
-        });
+        devices.push(this.buildDeviceEntry(settings, unitId, typeId, modelConfig, deviceName));
 
-        this.log(`Found ${modelConfig.model} at slave ${slaveId}`);
+        this.log(`Found ${modelConfig.model} at unit ${unitId}`);
       } catch {
         consecutiveTimeouts++;
-        if (consecutiveTimeouts >= 10 && devices.length > 0) {
-          this.log(`Stopping scan early after 10 consecutive timeouts at slave ${slaveId}`);
+        if (consecutiveTimeouts >= maxConsecutiveTimeouts) {
+          this.log(`Stopping scan after ${maxConsecutiveTimeouts} consecutive timeouts at unit ${unitId}`);
           break;
         }
       }
     }
 
     return devices;
+  }
+
+  /** Build a Homey device entry for the pairing list. */
+  private buildDeviceEntry(
+    settings: PowerTagSettings,
+    unitId: number,
+    typeId: number,
+    modelConfig: PowerTagModelConfig,
+    deviceName: string,
+  ): any {
+    return {
+      name: deviceName || `${modelConfig.name} (${unitId})`,
+      data: { id: `${settings.address}:${settings.port}:${unitId}` } as PowerTagDeviceData,
+      settings: {
+        address: settings.address,
+        port: settings.port,
+        polling: settings.polling,
+      },
+      store: { unitId, typeId, model: modelConfig.model } as PowerTagStore,
+      capabilities: getCapabilitiesForModel(modelConfig),
+      capabilitiesOptions: getCapabilityOptionsForModel(modelConfig),
+    };
   }
 
 }
