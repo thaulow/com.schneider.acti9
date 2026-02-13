@@ -27,17 +27,11 @@ const REG_PAS_DEVICE_ADDRESS = 0x01F8; // 504
 const REG_COMMERCIAL_REF = 0x7954; // 31060
 
 /**
- * Read all measurement registers for a PowerTag device.
+ * Read all measurement registers for a PowerTag energy device.
  *
- * Groups adjacent registers into contiguous block reads to minimize
- * Modbus transactions:
- *   Block 1: Current L1/L2/L3 (2999-3004, 6 regs)
- *   Block 2: Voltage (3019-3024 L-L or 3027-3032 L-N, 6 regs)
- *   Block 3: Power L1/L2/L3 + Total (3053-3060, 8 regs)
- *   Block 4: Power Factor (3083-3084, 2 regs)
- *   Block 5: Frequency (3109-3110, 2 regs)
- *   Block 6: Temperature (3131-3132, 2 regs)
- *   Block 7: Total Energy (3203-3206, 4 regs)
+ * Reads are sequential (one at a time) because jsmodbus processes requests
+ * sequentially anyway. Using Promise.all would queue 7 requests internally,
+ * and if any fails the remaining orphaned requests block the entire queue.
  */
 export async function readAllRegisters(
   client: InstanceType<typeof Modbus.client.TCP>,
@@ -45,16 +39,13 @@ export async function readAllRegisters(
 ): Promise<EnergyPollResult> {
   const voltStart = voltageMode === 'L-N' ? REG_VOLTAGE_LN_1 : REG_VOLTAGE_LL_1;
 
-  const [currResp, voltResp, powerResp, pfResp, freqResp, tempResp, energyResp] =
-    await Promise.all([
-      client.readHoldingRegisters(REG_CURRENT_L1, 6),
-      client.readHoldingRegisters(voltStart, 6),
-      client.readHoldingRegisters(REG_POWER_L1, 8),
-      client.readHoldingRegisters(REG_POWER_FACTOR, 2),
-      client.readHoldingRegisters(REG_FREQUENCY, 2),
-      client.readHoldingRegisters(REG_TEMPERATURE, 2),
-      client.readHoldingRegisters(REG_ENERGY_TOTAL, 4),
-    ]);
+  const currResp   = await client.readHoldingRegisters(REG_CURRENT_L1, 6);
+  const voltResp   = await client.readHoldingRegisters(voltStart, 6);
+  const powerResp  = await client.readHoldingRegisters(REG_POWER_L1, 8);
+  const pfResp     = await client.readHoldingRegisters(REG_POWER_FACTOR, 2);
+  const freqResp   = await client.readHoldingRegisters(REG_FREQUENCY, 2);
+  const tempResp   = await client.readHoldingRegisters(REG_TEMPERATURE, 2);
+  const energyResp = await client.readHoldingRegisters(REG_ENERGY_TOTAL, 4);
 
   const currBuf   = currResp.response.body.valuesAsBuffer;
   const voltBuf   = voltResp.response.body.valuesAsBuffer;
@@ -99,11 +90,9 @@ const REG_DO1_STATUS = 37052;  // UINT16: output status (0=Off, 1=On)
 export async function readHeatTagRegisters(
   client: InstanceType<typeof Modbus.client.TCP>,
 ): Promise<HeatTagPollResult> {
-  const [tempResp, humResp, alarmResp] = await Promise.all([
-    client.readHoldingRegisters(REG_HEATTAG_TEMP, 2),
-    client.readHoldingRegisters(REG_HEATTAG_HUMIDITY, 2),
-    client.readHoldingRegisters(REG_HEATTAG_ALARM, 1),
-  ]);
+  const tempResp  = await client.readHoldingRegisters(REG_HEATTAG_TEMP, 2);
+  const humResp   = await client.readHoldingRegisters(REG_HEATTAG_HUMIDITY, 2);
+  const alarmResp = await client.readHoldingRegisters(REG_HEATTAG_ALARM, 1);
 
   const humidity = humResp.response.body.valuesAsBuffer.readFloatBE(0);
 
@@ -120,10 +109,8 @@ export async function readHeatTagRegisters(
 export async function readControl2DIRegisters(
   client: InstanceType<typeof Modbus.client.TCP>,
 ): Promise<Control2DIPollResult> {
-  const [di1Resp, di2Resp] = await Promise.all([
-    client.readHoldingRegisters(REG_DI1_STATUS, 1),
-    client.readHoldingRegisters(REG_DI2_STATUS, 1),
-  ]);
+  const di1Resp = await client.readHoldingRegisters(REG_DI1_STATUS, 1);
+  const di2Resp = await client.readHoldingRegisters(REG_DI2_STATUS, 1);
 
   // Register value: 0=On, 1=Off — invert so true=On
   return {
@@ -138,10 +125,8 @@ export async function readControl2DIRegisters(
 export async function readControlIORegisters(
   client: InstanceType<typeof Modbus.client.TCP>,
 ): Promise<ControlIOPollResult> {
-  const [di1Resp, doResp] = await Promise.all([
-    client.readHoldingRegisters(REG_DI1_STATUS, 1),
-    client.readHoldingRegisters(REG_DO1_STATUS, 1),
-  ]);
+  const di1Resp = await client.readHoldingRegisters(REG_DI1_STATUS, 1);
+  const doResp  = await client.readHoldingRegisters(REG_DO1_STATUS, 1);
 
   return {
     di1Status: di1Resp.response.body.valuesAsBuffer.readUInt16BE(0) === 0,
@@ -197,12 +182,12 @@ export async function readPanelServerDeviceAddresses(
   // 99 slots × 5 registers = 495 registers total, starting at 0x01F8
   // Read in 4 chunks of 125 registers (Modbus max per read)
   const baseReg = REG_PAS_DEVICE_ADDRESS;
-  const chunks = await Promise.all([
-    client.readHoldingRegisters(baseReg, 125),
-    client.readHoldingRegisters(baseReg + 125, 125),
-    client.readHoldingRegisters(baseReg + 250, 125),
-    client.readHoldingRegisters(baseReg + 375, 120), // last chunk: 495 - 375 = 120
-  ]);
+  const chunks = [
+    await client.readHoldingRegisters(baseReg, 125),
+    await client.readHoldingRegisters(baseReg + 125, 125),
+    await client.readHoldingRegisters(baseReg + 250, 125),
+    await client.readHoldingRegisters(baseReg + 375, 120), // last chunk: 495 - 375 = 120
+  ];
 
   const addresses = new Map<number, number>();
 

@@ -34,7 +34,8 @@ class PowerTagDevice extends Homey.Device {
   async onInit(): Promise<void> {
     this.settings = this.getSettings() as PowerTagSettings;
     this.store = {
-      unitId: this.getStoreValue('unitId'),
+      // Fall back to legacy 'slaveId' key for devices paired before the rename
+      unitId: this.getStoreValue('unitId') ?? this.getStoreValue('slaveId'),
       typeId: this.getStoreValue('typeId'),
       model: this.getStoreValue('model'),
     };
@@ -175,8 +176,9 @@ class PowerTagDevice extends Homey.Device {
         await this.setAvailable();
       }
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
       this.error(`Poll error for unit ${this.store.unitId}:`, err);
-      await this.setUnavailable('Communication error').catch(() => {});
+      await this.setUnavailable(`Poll failed: ${msg}`).catch(() => {});
     }
   }
 
