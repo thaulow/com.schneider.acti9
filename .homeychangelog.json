@@ -28,5 +28,8 @@
   },
   "1.0.10": {
     "en": "Fallback for old pairings"
+  },
+  "1.0.11": {
+    "en": "Set power to default, make whole_house false"
   }
 }
