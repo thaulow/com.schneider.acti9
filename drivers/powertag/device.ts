@@ -197,8 +197,10 @@ class PowerTagDevice extends Homey.Device {
       if (!this.getAvailable()) {
         await this.setAvailable();
       }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+    } catch (err: any) {
+      const msg = err instanceof Error
+        ? err.message
+        : (err?.message ?? JSON.stringify(err));
       this.error(`Poll error for unit ${this.store.unitId}:`, err);
       await this.setUnavailable(`Poll failed: ${msg}`).catch(() => {});
     }

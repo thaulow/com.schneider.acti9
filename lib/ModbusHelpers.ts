@@ -77,16 +77,16 @@ export async function readAllRegisters(
   };
 }
 
-// HeatTag registers
-const REG_HEATTAG_TEMP     = 4001;  // Float32: temperature °C
-const REG_HEATTAG_HUMIDITY = 4007;  // Float32: relative humidity (0.50 = 50%)
-const REG_HEATTAG_ALARM    = 3323;  // UINT16: alarm level (0=None, 1=Low, 2=Medium, 3=High)
+// HeatTag registers (0-based addresses, matching energy register convention)
+const REG_HEATTAG_TEMP     = 4000;  // 0x0FA0 Float32: temperature °C
+const REG_HEATTAG_HUMIDITY = 4006;  // 0x0FA6 Float32: relative humidity (0.50 = 50%)
+const REG_HEATTAG_ALARM    = 3322;  // 0x0CFA UINT16: alarm level (0=None, 1=Low, 2=Medium, 3=High)
 
-// Control module registers
-const REG_DI1_STATUS = 34065;  // UINT16: DI1 input status (0=On, 1=Off)
-const REG_DI2_STATUS = 34165;  // UINT16: DI2 input status (0=On, 1=Off)
-const REG_DO1_CMD    = 37051;  // UINT16 R/W: command (0=None, 1=Off, 2=On)
-const REG_DO1_STATUS = 37052;  // UINT16: output status (0=Off, 1=On)
+// Control module registers (0-based addresses)
+const REG_DI1_STATUS = 34064;  // 0x8510 UINT16: DI1 input status (0=On, 1=Off)
+const REG_DI2_STATUS = 34164;  // 0x8594 UINT16: DI2 input status (0=On, 1=Off)
+const REG_DO1_CMD    = 37050;  // 0x90BA UINT16 R/W: command (0=None, 1=Off, 2=On)
+const REG_DO1_STATUS = 37051;  // 0x90BB UINT16: output status (0=Off, 1=On)
 
 /**
  * Read HeatTag sensor registers: temperature, humidity, and alarm level.
